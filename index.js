@@ -1,16 +1,42 @@
 const http = require('http')
+const https = require('https')
 const url = require('url')
 const StringDecoder = require('string_decoder').StringDecoder;
+const config = require('./lib/config');
+const fs = require('fs')
+const handlers = require('./lib/handlers')
+const helpers = require('./lib/helpers')
 
-const server = http.createServer(function (req, res) {
+const httpServer = http.createServer(function (req, res) {
+    unifiedServer(req, res)
+});
+
+const httpsOptions = {
+    'key': fs.readFileSync('./https/key.pem'),
+    'cert': fs.readFileSync('./https/cert.pem')
+}
+
+const httpsServer = https.createServer(httpsOptions, function (req, res) {
+    unifiedServer(req, res)
+})
+
+const router = {
+    'ping': handlers.ping,
+    'users': handlers.users
+};
+
+httpServer.listen(config.http, () => console.log(`Listening on port ${config.http}`))
+httpsServer.listen(config.https, () => console.log(`Listening on port ${config.https}`))
+
+const unifiedServer = function (req, res) {
     const parsedUrl = url.parse(req.url, true);
 
     const path = parsedUrl.pathname;
 
     const query = parsedUrl.query;
-    
+
     const method = req.method.toLowerCase();
-    
+
     const headers = req.headers;
 
     const decoder = new StringDecoder('utf-8')
@@ -22,7 +48,7 @@ const server = http.createServer(function (req, res) {
 
     req.on('end', () => {
         buffer += decoder.end()
-        const chosedHandler = typeof(router[trimmedPath]) !== 'undefined' ? router[trimmedPath] : handlers.notFound;
+        const chosedHandler = typeof (router[trimmedPath]) !== 'undefined' ? router[trimmedPath] : handlers.notFound;
         const data = {
             path: trimmedPath,
             query,
@@ -32,28 +58,13 @@ const server = http.createServer(function (req, res) {
         }
 
         chosedHandler(data, function (statusCode, payload) {
-            statusCode = typeof(statusCode) == 'number' ? statusCode : 200;
-            payload = typeof(payload) == 'object' ? payload : {};
+            statusCode = typeof (statusCode) == 'number' ? statusCode : 200;
+            payload = typeof (payload) == 'object' ? payload : {};
             const payloadString = JSON.stringify(payload)
+            res.setHeader('Content-Type', 'application/json')
             res.writeHead(statusCode)
             res.end(payloadString)
 
         })
     })
-})
-
-const handlers = {};
-
-handlers.sample = function (data, callback) {
-    callback(406, {'name': 'handler'})
-};
-
-handlers.notFound = function(data, callback) {
-    callback(404)
 }
-
-const router = {
-    'sample': handlers.sample
-};
-
-server.listen(3000, () => console.log('Listening on port 3000'))
